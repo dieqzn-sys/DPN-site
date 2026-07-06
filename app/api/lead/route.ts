@@ -158,13 +158,18 @@ async function sendGoogleSheetsWebhook(
   telegramMessageId: string,
 ) {
   const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL?.trim();
+  const webhookConfigured = Boolean(webhookUrl);
+
+  console.log(
+    `Google Sheets webhook configured: ${webhookConfigured}`,
+  );
 
   if (!webhookUrl) {
     console.warn("Google Sheets webhook URL is not configured");
     return;
   }
 
-  console.log("google sheets webhook started");
+  console.log("Google Sheets webhook request started");
 
   try {
     const response = await fetch(webhookUrl, {
@@ -189,17 +194,26 @@ async function sendGoogleSheetsWebhook(
       signal: AbortSignal.timeout(8_000),
     });
 
-    console.log(`google sheets webhook response status: ${response.status}`);
+    const responseBody = await response.text();
+    const safeResponseBody =
+      sanitizeMultilineText(responseBody, 1000) || "(empty response)";
+
+    console.log(
+      `Google Sheets webhook response status: ${response.status}`,
+    );
+    console.log(
+      `Google Sheets webhook response body: ${safeResponseBody}`,
+    );
 
     if (!response.ok) {
-      console.error("Google Sheets webhook failed", {
+      console.error("Google Sheets webhook failed:", {
         status: response.status,
-        statusText: response.statusText,
+        responseBody: safeResponseBody,
       });
       return;
     }
 
-    console.log("google sheets webhook ok");
+    console.log("Google Sheets webhook ok");
   } catch {
     console.error("Google Sheets webhook failed: network request failed");
   }

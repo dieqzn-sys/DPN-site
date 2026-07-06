@@ -91,7 +91,7 @@ GOOGLE_SHEETS_WEBHOOK_URL=
 
 ### Настройка в Vercel
 
-Добавьте `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` и `GOOGLE_SHEETS_WEBHOOK_URL` в настройках проекта Vercel: **Settings → Environment Variables**. Выберите нужные окружения и выполните новый deploy/redeploy, чтобы приложение получило добавленные значения.
+Добавьте `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` и `GOOGLE_SHEETS_WEBHOOK_URL` в настройках проекта Vercel: **Settings → Environment Variables**. Для рабочего сайта переменная `GOOGLE_SHEETS_WEBHOOK_URL` должна быть включена для окружения **Production**. После добавления или изменения переменных выполните новый production deploy/redeploy.
 
 После настройки отправьте тестовую заявку через форму и проверьте, что технический бот прислал сообщение в указанный чат.
 
