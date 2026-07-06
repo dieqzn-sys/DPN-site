@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
 import { devices } from "@/data/site";
 import {
   getTariffById,
@@ -19,6 +20,7 @@ type LeadPayload = {
 };
 
 type AcceptedLead = {
+  leadId: string;
   name: string;
   contact: string;
   tariffId: string;
@@ -34,10 +36,26 @@ type AcceptedLead = {
 
 type TelegramApiResponse = {
   ok?: boolean;
+  result?: {
+    message_id?: number;
+  };
 };
 
 function isFilledString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function generateLeadId() {
+  const now = new Date();
+  const year = now.getUTCFullYear();
+  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(now.getUTCDate()).padStart(2, "0");
+  const hours = String(now.getUTCHours()).padStart(2, "0");
+  const minutes = String(now.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(now.getUTCSeconds()).padStart(2, "0");
+  const randomCode = randomBytes(2).toString("hex").toUpperCase();
+
+  return `DPN-${year}${month}${day}-${hours}${minutes}${seconds}-${randomCode}`;
 }
 
 function sanitizeInlineText(value: string, maxLength: number) {
@@ -87,7 +105,7 @@ async function sendTelegramNotification(lead: AcceptedLead) {
     console.warn(
       "telegram send skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID is not configured",
     );
-    return;
+    return "";
   }
 
   console.log("telegram send started");
@@ -122,12 +140,68 @@ async function sendTelegramNotification(lead: AcceptedLead) {
         status: response.status,
         responseBody: responseBody.slice(0, 2000),
       });
-      return;
+      return "";
     }
 
     console.log("telegram send ok");
+    return typeof telegramResult.result?.message_id === "number"
+      ? String(telegramResult.result.message_id)
+      : "";
   } catch {
     console.error("telegram send failed: network request failed");
+    return "";
+  }
+}
+
+async function sendGoogleSheetsWebhook(
+  lead: AcceptedLead,
+  telegramMessageId: string,
+) {
+  const webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL?.trim();
+
+  if (!webhookUrl) {
+    console.warn("Google Sheets webhook URL is not configured");
+    return;
+  }
+
+  console.log("google sheets webhook started");
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        leadId: lead.leadId,
+        status: "Новая",
+        tariff: lead.tariffName,
+        period: lead.periodLabel,
+        price: lead.price,
+        devices: lead.deviceCount,
+        name: lead.name,
+        contact: lead.contact,
+        device: lead.device,
+        comment: lead.comment,
+        source: "сайт",
+        telegramMessageId,
+      }),
+      cache: "no-store",
+      redirect: "follow",
+      signal: AbortSignal.timeout(8_000),
+    });
+
+    console.log(`google sheets webhook response status: ${response.status}`);
+
+    if (!response.ok) {
+      console.error("Google Sheets webhook failed", {
+        status: response.status,
+        statusText: response.statusText,
+      });
+      return;
+    }
+
+    console.log("google sheets webhook ok");
+  } catch {
+    console.error("Google Sheets webhook failed: network request failed");
   }
 }
 
@@ -202,6 +276,7 @@ export async function POST(request: Request) {
   }
 
   const lead: AcceptedLead = {
+    leadId: generateLeadId(),
     name: body.name.trim(),
     contact: body.contact.trim(),
     tariffId: tariff.id,
@@ -216,13 +291,15 @@ export async function POST(request: Request) {
   };
 
   console.log("lead received", {
+    leadId: lead.leadId,
     tariffId: lead.tariffId,
     periodId: lead.periodId,
     device: lead.device,
     hasComment: lead.comment.length > 0,
   });
 
-  await sendTelegramNotification(lead);
+  const telegramMessageId = await sendTelegramNotification(lead);
+  await sendGoogleSheetsWebhook(lead, telegramMessageId);
 
   return NextResponse.json({ success: true });
 }

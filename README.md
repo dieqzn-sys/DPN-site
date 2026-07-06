@@ -57,9 +57,10 @@ POST /api/lead
 - самостоятельно определяет цену из `data/tariffs.ts`;
 - формирует нормализованную заявку;
 - отправляет заявку в Telegram через серверный `fetch`;
+- записывает заявку в Google Sheets через Apps Script webhook;
 - возвращает `{ "success": true }` после принятия данных.
 
-Если Telegram API временно недоступен или отклоняет запрос, ошибка записывается в серверную консоль, но пользователь всё равно получает успешное подтверждение формы.
+Если Telegram API или Google Sheets webhook временно недоступны, ошибка записывается в серверную консоль, но пользователь всё равно получает успешное подтверждение формы.
 
 ## Telegram-уведомления
 
@@ -77,10 +78,12 @@ POST /api/lead
 ```env
 TELEGRAM_BOT_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
+GOOGLE_SHEETS_WEBHOOK_URL=
 ```
 
 - `TELEGRAM_BOT_TOKEN` — токен технического бота, полученный у BotFather.
 - `TELEGRAM_CHAT_ID` — ID пользователя, группы или канала, куда бот должен отправлять заявки.
+- `GOOGLE_SHEETS_WEBHOOK_URL` — URL опубликованного Apps Script Web App.
 
 Файл `.env.local` содержит секреты, игнорируется Git и не должен попадать в коммиты. В репозитории хранится только безопасный шаблон `.env.example` без реальных значений.
 
@@ -88,9 +91,41 @@ TELEGRAM_CHAT_ID=your_chat_id
 
 ### Настройка в Vercel
 
-Добавьте `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID` в настройках проекта Vercel: **Settings → Environment Variables**. Выберите нужные окружения и выполните новый deploy/redeploy, чтобы приложение получило добавленные значения.
+Добавьте `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` и `GOOGLE_SHEETS_WEBHOOK_URL` в настройках проекта Vercel: **Settings → Environment Variables**. Выберите нужные окружения и выполните новый deploy/redeploy, чтобы приложение получило добавленные значения.
 
 После настройки отправьте тестовую заявку через форму и проверьте, что технический бот прислал сообщение в указанный чат.
+
+## Google Sheets webhook
+
+Заявки записываются в таблицу **DPN Leads** через опубликованный Apps Script Web App.
+
+1. Создайте Google-таблицу с листом `DPN Leads`.
+2. Создайте привязанный Apps Script с функцией `doPost(e)`.
+3. В `doPost(e)` прочитайте JSON из `e.postData.contents` и добавьте новую строку в лист `DPN Leads`.
+4. Опубликуйте Apps Script как Web App с доступом для входящих запросов.
+5. Скопируйте URL deployment и добавьте его в `GOOGLE_SHEETS_WEBHOOK_URL` локально и в Vercel.
+6. После изменения переменных в Vercel выполните новый deploy/redeploy.
+
+API отправляет в webhook следующие поля:
+
+```json
+{
+  "leadId": "DPN-YYYYMMDD-HHMMSS-XXXX",
+  "status": "Новая",
+  "tariff": "Pro",
+  "period": "1 месяц",
+  "price": 299,
+  "devices": 5,
+  "name": "Иван",
+  "contact": "@username",
+  "device": "iPhone",
+  "comment": "Комментарий",
+  "source": "сайт",
+  "telegramMessageId": "123"
+}
+```
+
+Если URL webhook не задан, форма продолжает работать, а сервер выводит предупреждение `Google Sheets webhook URL is not configured`.
 
 ## Структура
 
